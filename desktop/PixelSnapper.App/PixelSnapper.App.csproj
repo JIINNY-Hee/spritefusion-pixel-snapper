@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>PixelSnapper</AssemblyName>
+    <RootNamespace>PixelSnapper</RootNamespace>
+    <Version>1.1.0</Version>
+    <Product>픽셀 스냅퍼</Product>
+    <Description>픽셀 아트 변환과 미리보기</Description>
+    <ApplicationIcon>Assets\PixelSnapper.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\spritefusion-pixel-snapper.exe" LogicalName="PixelSnapper.Engine.exe" />
+    <Resource Include="Assets\PixelSnapper.ico" />
+    <EmbeddedResource Include="Assets\SpriteFusion-LICENSE.txt" Condition="Exists('Assets\SpriteFusion-LICENSE.txt')" />
+  </ItemGroup>
+</Project>
