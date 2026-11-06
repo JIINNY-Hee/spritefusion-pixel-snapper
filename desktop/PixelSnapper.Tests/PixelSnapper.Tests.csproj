@@ -3,11 +3,14 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../PixelSnapper.App/EngineService.cs" Link="EngineService.cs" />
+    <Compile Include="../PixelSnapper.App/OutputSizeOptions.cs" Link="OutputSizeOptions.cs" />
+    <Compile Include="../PixelSnapper.App/OutputImageService.cs" Link="OutputImageService.cs" />
     <EmbeddedResource Include="../PixelSnapper.App/Assets/spritefusion-pixel-snapper.exe" LogicalName="PixelSnapper.Engine.exe" />
   </ItemGroup>
 </Project>
