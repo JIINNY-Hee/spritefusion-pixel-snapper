@@ -1,0 +1,35 @@
+using System.ComponentModel;
+using System.IO;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+
+namespace PixelSnapper;
+public sealed class ImageEntry : INotifyPropertyChanged
+{
+    public required string InputPath { get; init; }
+    public string FileName => Path.GetFileName(InputPath);
+    public string? OutputPath { get; set; }
+    private string status = "대기 중";
+    public string Status { get => status; set { status = value; Changed(); } }
+    private string details = "";
+    public string Details { get => details; set { details = value; Changed(); } }
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void Changed([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+}
+public sealed class Settings
+{
+    public int Colors { get; set; } = 16;
+    public bool CheckUpdatesOnStartup { get; set; } = true;
+    public bool UseCustomDirectory { get; set; }
+    public string OutputDirectory { get; set; } = "";
+    public string LastInputDirectory { get; set; } = "";
+    public static string StoreDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PixelSnapper");
+    public static Settings Load()
+    {
+        try { return JsonSerializer.Deserialize<Settings>(File.ReadAllText(Path.Combine(StoreDirectory, "settings.json"))) ?? new(); } catch { return new(); }
+    }
+    public void Save()
+    {
+        try { Directory.CreateDirectory(StoreDirectory); File.WriteAllText(Path.Combine(StoreDirectory, "settings.json"), JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true })); } catch { }
+    }
+}
