@@ -21,6 +21,11 @@ public sealed class Settings
     public int Colors { get; set; } = 16;
     public bool UseManualPixelSize { get; set; }
     public double PixelSize { get; set; } = 8;
+    public bool UseCustomOutputSize { get; set; }
+    public int OutputWidth { get; set; }
+    public int OutputHeight { get; set; }
+    public bool KeepOutputAspectRatio { get; set; } = true;
+    public bool OutputWidthIsAnchor { get; set; } = true;
     public bool CheckUpdatesOnStartup { get; set; } = true;
     public bool UseCustomDirectory { get; set; }
     public string OutputDirectory { get; set; } = "";

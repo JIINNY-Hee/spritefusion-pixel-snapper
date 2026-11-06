@@ -17,19 +17,30 @@ public static class EngineService
         SupportedExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
 
     public static async Task<string> ConvertAsync(string inputPath, string? outputDirectory,
-        int sampleValue, CancellationToken token, double? pixelSize = null)
+        int sampleValue, CancellationToken token, double? pixelSize = null, OutputSizeOptions? outputSize = null)
     {
         token.ThrowIfCancellationRequested();
         if (sampleValue is < 1 or > 256)
             throw new ArgumentOutOfRangeException(nameof(sampleValue), "색상 수는 1~256 사이로 입력해 주세요.");
         if (pixelSize is { } size && (!double.IsFinite(size) || size < 1))
             throw new ArgumentOutOfRangeException(nameof(pixelSize), "픽셀 크기는 1px 이상의 숫자로 입력해 주세요.");
+        outputSize?.Validate();
 
         inputPath = Path.GetFullPath(inputPath);
         if (!File.Exists(inputPath))
             throw new FileNotFoundException("원본 이미지 파일을 찾을 수 없습니다.", inputPath);
         if (!IsSupported(inputPath))
             throw new ArgumentException("PNG, JPG, JPEG 이미지만 사용할 수 있습니다.", nameof(inputPath));
+
+        (int Width, int Height)? outputDimensions = null;
+        if (outputSize != null)
+        {
+            outputDimensions = await Task.Run(() =>
+            {
+                var original = OutputImageService.ReadDimensions(inputPath);
+                return outputSize.Resolve(original.Width, original.Height);
+            }, token);
+        }
 
         var destination = string.IsNullOrWhiteSpace(outputDirectory)
             ? Path.GetDirectoryName(inputPath)!
@@ -91,6 +102,9 @@ public static class EngineService
             }
             if (!File.Exists(temporaryOutput) || new FileInfo(temporaryOutput).Length < 8)
                 throw new InvalidOperationException("변환 결과 파일이 생성되지 않았습니다.");
+
+            if (outputDimensions is { } dimensions)
+                await Task.Run(() => OutputImageService.ResizePng(temporaryOutput, dimensions.Width, dimensions.Height, token), token);
 
             var stem = Path.GetFileNameWithoutExtension(inputPath) + "_snapped";
             for (var index = 0; ; index++)

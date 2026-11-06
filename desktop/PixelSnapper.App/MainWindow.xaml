@@ -1,5 +1,5 @@
 <Window x:Class="PixelSnapper.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="픽셀 스냅퍼" Width="1180" Height="820" MinWidth="940" MinHeight="700" WindowStartupLocation="CenterScreen" Icon="Assets/PixelSnapper.ico" Style="{StaticResource {x:Type Window}}"
+        Title="픽셀 스냅퍼" Width="1180" Height="860" MinWidth="940" MinHeight="760" WindowStartupLocation="CenterScreen" Icon="Assets/PixelSnapper.ico" Style="{StaticResource {x:Type Window}}"
         AllowDrop="True" DragOver="Window_DragOver" Drop="Window_Drop" Closing="Window_Closing">
   <Grid Margin="26,22,26,20">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -51,23 +51,60 @@
     </Grid>
     <Border Grid.Row="2" Background="#192333" BorderBrush="#2B3A50" BorderThickness="1" CornerRadius="12" Padding="18,16" Margin="0,18,0,0">
       <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <StackPanel Grid.Row="0">
+          <StackPanel Orientation="Horizontal">
+            <CheckBox x:Name="CustomOutputSizeCheck" Content="출력 크기 지정" Foreground="#EAF0F8" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,22,0" Checked="OutputSizeMode_Changed" Unchecked="OutputSizeMode_Changed"/>
+            <TextBlock Text="가로" Margin="0,0,8,0"/>
+            <TextBox x:Name="OutputWidthBox" Width="82" MaxLength="5" IsEnabled="False" TextChanged="OutputWidth_Changed" AutomationProperties.Name="출력 가로 픽셀" ToolTip="결과 PNG의 가로 픽셀 수입니다. 1~8192 사이의 정수를 입력하세요."/>
+            <TextBlock Text="px" Foreground="{StaticResource Muted}" Margin="6,0,12,0"/>
+            <ToggleButton x:Name="AspectRatioToggle" Width="36" Height="34" IsChecked="True" IsEnabled="False" Checked="AspectRatio_Changed" Unchecked="AspectRatio_Changed" AutomationProperties.Name="원본 비율 유지" ToolTip="원본 비율 유지 · 끄면 가로와 세로를 각각 지정합니다." Margin="0,0,12,0" Cursor="Hand">
+              <ToggleButton.Style>
+                <Style TargetType="ToggleButton">
+                  <Setter Property="Foreground" Value="#9BAAC0"/>
+                  <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="ChainBorder" CornerRadius="6" Background="#111824" BorderBrush="#3B4C65" BorderThickness="1">
+                      <Grid Width="24" Height="24">
+                        <Path Stroke="{TemplateBinding Foreground}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M10,13 A5,5 0 0 0 17.54,13.54 L20.54,10.54 A5,5 0 0 0 13.47,3.47 L11.75,5.18 M14,11 A5,5 0 0 0 6.46,10.46 L3.46,13.46 A5,5 0 0 0 10.53,20.53 L12.24,18.82"/>
+                        <Path x:Name="UnlinkedMark" Stroke="#9BAAC0" StrokeThickness="2" Data="M4,4 L20,20"/>
+                      </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsChecked" Value="True"><Setter Property="Foreground" Value="#5CE1CE"/><Setter TargetName="ChainBorder" Property="BorderBrush" Value="#5CE1CE"/><Setter TargetName="UnlinkedMark" Property="Visibility" Value="Collapsed"/></Trigger>
+                      <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ChainBorder" Property="Opacity" Value="0.4"/></Trigger>
+                      <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="ChainBorder" Property="BorderThickness" Value="2"/></Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate></Setter.Value></Setter>
+                </Style>
+              </ToggleButton.Style>
+            </ToggleButton>
+            <TextBlock Text="세로" Margin="0,0,8,0"/>
+            <TextBox x:Name="OutputHeightBox" Width="82" MaxLength="5" IsEnabled="False" TextChanged="OutputHeight_Changed" AutomationProperties.Name="출력 세로 픽셀" ToolTip="결과 PNG의 세로 픽셀 수입니다. 1~8192 사이의 정수를 입력하세요."/>
+            <TextBlock Text="px" Foreground="{StaticResource Muted}" Margin="6,0,16,0"/>
+            <TextBlock x:Name="AspectRatioState" Text="원본 비율 유지" Foreground="#5CE1CE" FontSize="12"/>
+          </StackPanel>
+          <TextBlock x:Name="OutputSizeHint" Text="지정하지 않으면 격자 변환 결과 크기로 저장합니다." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"/>
+        </StackPanel>
+        <Border Grid.Row="1" Height="1" Background="#2B3A50" Margin="0,13,0,13"/>
+        <Grid Grid.Row="2">
         <Grid.ColumnDefinitions><ColumnDefinition Width="350"/><ColumnDefinition Width="1"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
         <StackPanel Margin="0,0,18,0">
           <StackPanel Orientation="Horizontal"><TextBlock Text="색상 수" FontWeight="SemiBold" Width="68"/><TextBox x:Name="ColorsBox" Width="70" Text="16" ToolTip="팔레트에 사용할 최대 색상 수입니다. 1~256 사이의 정수를 입력하세요."/><TextBlock Text="1–256" Foreground="{StaticResource Muted}" FontSize="11" Margin="9,0,0,0"/></StackPanel>
           <StackPanel Orientation="Horizontal" Margin="0,9,0,0">
-            <TextBlock Text="픽셀 크기" FontWeight="SemiBold" Width="68"/>
+            <TextBlock Text="원본 격자" FontWeight="SemiBold" Width="68"/>
             <RadioButton x:Name="AutoPixelSizeRadio" Content="자동" GroupName="PixelSizeMode" IsChecked="True" Checked="PixelSizeMode_Changed" Margin="0,0,12,0"/>
             <RadioButton x:Name="ManualPixelSizeRadio" Content="직접 지정" GroupName="PixelSizeMode" Checked="PixelSizeMode_Changed" Margin="0,0,8,0"/>
             <TextBox x:Name="PixelSizeBox" Width="64" Text="8" IsEnabled="False" ToolTip="원본 이미지에서 한 픽셀 칸의 크기입니다. 1 이상, 이미지의 짧은 변 길이의 절반 이하로 입력하세요. 소수도 사용할 수 있습니다."/>
             <TextBlock Text="px" Foreground="{StaticResource Muted}" FontSize="11" Margin="6,0,0,0"/>
           </StackPanel>
-          <TextBlock Text="원본에서 한 픽셀 칸의 크기입니다. 경계는 이미지에 맞춰 보정됩니다." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,9,0,0" TextWrapping="Wrap"/>
+          <TextBlock Text="원본의 격자 간격입니다. 출력 가로·세로 크기와는 별도 설정입니다." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,9,0,0" TextWrapping="Wrap"/>
         </StackPanel>
         <Border Grid.Column="1" Background="#2B3A50"/>
         <StackPanel Grid.Column="2" Margin="20,0,0,0"><StackPanel Orientation="Horizontal" Margin="0,0,0,10"><TextBlock Text="저장 위치" FontWeight="SemiBold" Margin="0,0,20,0"/><RadioButton x:Name="AlongsideRadio" Content="원본 이미지 옆" GroupName="Destination" IsChecked="True" Checked="Destination_Changed"/><RadioButton x:Name="CustomRadio" Content="폴더 지정" GroupName="Destination" Checked="Destination_Changed"/></StackPanel>
           <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBox x:Name="OutputBox" IsReadOnly="True" Text="" ToolTip="결과를 저장할 폴더"/><Button x:Name="BrowseOutputButton" Grid.Column="1" Content="찾아보기" Click="BrowseOutput_Click" Margin="8,0,0,0" Padding="14,7"/></Grid>
           <TextBlock Text="원본은 보존하고, 결과는 파일명_snapped.png로 저장합니다. 같은 이름이 있으면 번호를 붙입니다." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,9,0,0" TextWrapping="Wrap"/>
         </StackPanel>
+        </Grid>
       </Grid>
     </Border>
     <Grid Grid.Row="3" Margin="0,18,0,0">
