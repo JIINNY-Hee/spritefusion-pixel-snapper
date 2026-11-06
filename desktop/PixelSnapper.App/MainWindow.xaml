@@ -51,8 +51,18 @@
     </Grid>
     <Border Grid.Row="2" Background="#192333" BorderBrush="#2B3A50" BorderThickness="1" CornerRadius="12" Padding="18,16" Margin="0,18,0,0">
       <Grid>
-        <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="1"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-        <StackPanel Margin="0,0,18,0"><StackPanel Orientation="Horizontal"><TextBlock Text="색상 수" FontWeight="SemiBold" Margin="0,0,14,0"/><TextBox x:Name="ColorsBox" Width="70" Text="16" ToolTip="팔레트에 사용할 최대 색상 수입니다. 1~256 사이의 정수를 입력하세요."/><TextBlock Text="1–256" Foreground="{StaticResource Muted}" FontSize="11" Margin="9,0,0,0"/></StackPanel><TextBlock Text="픽셀 격자는 자동으로 감지합니다." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,12,0,0"/></StackPanel>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="350"/><ColumnDefinition Width="1"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+        <StackPanel Margin="0,0,18,0">
+          <StackPanel Orientation="Horizontal"><TextBlock Text="색상 수" FontWeight="SemiBold" Width="68"/><TextBox x:Name="ColorsBox" Width="70" Text="16" ToolTip="팔레트에 사용할 최대 색상 수입니다. 1~256 사이의 정수를 입력하세요."/><TextBlock Text="1–256" Foreground="{StaticResource Muted}" FontSize="11" Margin="9,0,0,0"/></StackPanel>
+          <StackPanel Orientation="Horizontal" Margin="0,9,0,0">
+            <TextBlock Text="픽셀 크기" FontWeight="SemiBold" Width="68"/>
+            <RadioButton x:Name="AutoPixelSizeRadio" Content="자동" GroupName="PixelSizeMode" IsChecked="True" Checked="PixelSizeMode_Changed" Margin="0,0,12,0"/>
+            <RadioButton x:Name="ManualPixelSizeRadio" Content="직접 지정" GroupName="PixelSizeMode" Checked="PixelSizeMode_Changed" Margin="0,0,8,0"/>
+            <TextBox x:Name="PixelSizeBox" Width="64" Text="8" IsEnabled="False" ToolTip="원본 이미지에서 한 픽셀 칸의 크기입니다. 1 이상, 이미지의 짧은 변 길이의 절반 이하로 입력하세요. 소수도 사용할 수 있습니다."/>
+            <TextBlock Text="px" Foreground="{StaticResource Muted}" FontSize="11" Margin="6,0,0,0"/>
+          </StackPanel>
+          <TextBlock Text="원본에서 한 픽셀 칸의 크기입니다. 경계는 이미지에 맞춰 보정됩니다." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,9,0,0" TextWrapping="Wrap"/>
+        </StackPanel>
         <Border Grid.Column="1" Background="#2B3A50"/>
         <StackPanel Grid.Column="2" Margin="20,0,0,0"><StackPanel Orientation="Horizontal" Margin="0,0,0,10"><TextBlock Text="저장 위치" FontWeight="SemiBold" Margin="0,0,20,0"/><RadioButton x:Name="AlongsideRadio" Content="원본 이미지 옆" GroupName="Destination" IsChecked="True" Checked="Destination_Changed"/><RadioButton x:Name="CustomRadio" Content="폴더 지정" GroupName="Destination" Checked="Destination_Changed"/></StackPanel>
           <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBox x:Name="OutputBox" IsReadOnly="True" Text="" ToolTip="결과를 저장할 폴더"/><Button x:Name="BrowseOutputButton" Grid.Column="1" Content="찾아보기" Click="BrowseOutput_Click" Margin="8,0,0,0" Padding="14,7"/></Grid>

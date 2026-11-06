@@ -19,6 +19,8 @@ public sealed class ImageEntry : INotifyPropertyChanged
 public sealed class Settings
 {
     public int Colors { get; set; } = 16;
+    public bool UseManualPixelSize { get; set; }
+    public double PixelSize { get; set; } = 8;
     public bool CheckUpdatesOnStartup { get; set; } = true;
     public bool UseCustomDirectory { get; set; }
     public string OutputDirectory { get; set; } = "";

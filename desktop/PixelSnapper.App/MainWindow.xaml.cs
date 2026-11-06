@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Windows;
@@ -24,6 +25,10 @@ public partial class MainWindow : Window
         InitializeComponent();
         FileList.ItemsSource = entries;
         ColorsBox.Text = Math.Clamp(settings.Colors, 1, 256).ToString();
+        bool validPixelSize = double.IsFinite(settings.PixelSize) && settings.PixelSize >= 1;
+        PixelSizeBox.Text = (validPixelSize ? settings.PixelSize : 8).ToString(CultureInfo.CurrentCulture);
+        ManualPixelSizeRadio.IsChecked = validPixelSize && settings.UseManualPixelSize;
+        AutoPixelSizeRadio.IsChecked = ManualPixelSizeRadio.IsChecked != true;
         OutputBox.Text = settings.OutputDirectory;
         CustomRadio.IsChecked = settings.UseCustomDirectory;
         AlongsideRadio.IsChecked = !settings.UseCustomDirectory;
@@ -31,6 +36,7 @@ public partial class MainWindow : Window
         VersionLabel.Text = UpdateService.CurrentVersionTag;
         AutoUpdateCheck.IsChecked = settings.CheckUpdatesOnStartup;
         UpdateDestination();
+        UpdatePixelSize();
         Loaded += async (_, _) => { AddPaths(arguments); ResizePreviews(); if (settings.CheckUpdatesOnStartup) await CheckForUpdatesAsync(false); };
     }
 
@@ -161,6 +167,18 @@ public partial class MainWindow : Window
     }
 
     private void Destination_Changed(object sender, RoutedEventArgs e) { if (initialized) UpdateDestination(); }
+    private void PixelSizeMode_Changed(object sender, RoutedEventArgs e) { if (initialized) UpdatePixelSize(); }
+    private void UpdatePixelSize()
+    {
+        AutoPixelSizeRadio.IsEnabled = ManualPixelSizeRadio.IsEnabled = !busy;
+        PixelSizeBox.IsEnabled = !busy && ManualPixelSizeRadio.IsChecked == true;
+    }
+    private bool TryGetPixelSize(out double pixelSize)
+    {
+        return (double.TryParse(PixelSizeBox.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out pixelSize)
+            || double.TryParse(PixelSizeBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out pixelSize))
+            && double.IsFinite(pixelSize) && pixelSize >= 1;
+    }
     private void UpdateDestination()
     {
         OutputBox.IsEnabled = !busy && CustomRadio.IsChecked == true;
@@ -178,6 +196,13 @@ public partial class MainWindow : Window
         if (busy || updating || entries.Count == 0) return;
         if (!int.TryParse(ColorsBox.Text, out int colors) || colors is < 1 or > 256)
         { MessageBox.Show(this, "색상 수는 1~256 사이의 정수로 입력해 주세요.", "색상 수 확인", MessageBoxButton.OK, MessageBoxImage.Information); ColorsBox.Focus(); ColorsBox.SelectAll(); return; }
+        double? pixelSize = null;
+        if (ManualPixelSizeRadio.IsChecked == true)
+        {
+            if (!TryGetPixelSize(out double enteredPixelSize))
+            { MessageBox.Show(this, "픽셀 크기는 1 이상의 숫자로 입력해 주세요.\n예: 4, 8, 2.5", "픽셀 크기 확인", MessageBoxButton.OK, MessageBoxImage.Information); PixelSizeBox.Focus(); PixelSizeBox.SelectAll(); return; }
+            pixelSize = enteredPixelSize;
+        }
         string? outputDirectory = CustomRadio.IsChecked == true ? OutputBox.Text : null;
         if (outputDirectory != null && string.IsNullOrWhiteSpace(outputDirectory))
         { MessageBox.Show(this, "찾아보기를 눌러 저장 폴더를 선택해 주세요.", "저장 위치 확인", MessageBoxButton.OK, MessageBoxImage.Information); return; }
@@ -195,7 +220,7 @@ public partial class MainWindow : Window
                 FileList.SelectedItem = entry; FileList.ScrollIntoView(entry);
                 try
                 {
-                    entry.OutputPath = await EngineService.ConvertAsync(entry.InputPath, outputDirectory, colors, cancellation.Token);
+                    entry.OutputPath = await EngineService.ConvertAsync(entry.InputPath, outputDirectory, colors, cancellation.Token, pixelSize);
                     entry.Status = "완료"; entry.Details = Path.GetFileName(entry.OutputPath); lastOutput = entry.OutputPath; done++;
                 }
                 catch (OperationCanceledException) { entry.Status = "중지됨"; cancelled = true; break; }
@@ -226,6 +251,7 @@ public partial class MainWindow : Window
         CancelButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed; CancelButton.IsEnabled = busy;
         OpenFolderButton.IsEnabled = lastOutput != null && Directory.Exists(Path.GetDirectoryName(lastOutput));
         UpdateDestination();
+        UpdatePixelSize();
         UpdateButton.IsEnabled = !busy && !updating;
         if (updating) ConvertButton.IsEnabled = false;
     }
@@ -245,6 +271,8 @@ public partial class MainWindow : Window
     private void SaveSettings()
     {
         if (int.TryParse(ColorsBox.Text, out int colors) && colors is >= 1 and <= 256) settings.Colors = colors;
+        settings.UseManualPixelSize = ManualPixelSizeRadio.IsChecked == true;
+        if (TryGetPixelSize(out double pixelSize)) settings.PixelSize = pixelSize;
         settings.UseCustomDirectory = CustomRadio.IsChecked == true; settings.OutputDirectory = OutputBox.Text; settings.Save();
     }
     private void Window_Closing(object? sender, CancelEventArgs e)
@@ -259,7 +287,7 @@ public partial class MainWindow : Window
         var assembly = Assembly.GetExecutingAssembly();
         var resource = assembly.GetManifestResourceNames().FirstOrDefault(n => n.EndsWith("SpriteFusion-LICENSE.txt", StringComparison.Ordinal));
         if (resource != null) { using var stream = assembly.GetManifestResourceStream(resource)!; using var reader = new StreamReader(stream); license = reader.ReadToEnd(); }
-        var text = $"픽셀 스냅퍼 {UpdateService.CurrentVersionTag}\n\n시작 시 새 버전을 확인합니다. 업데이트 버튼으로 다운로드·설치할 수 있습니다.\n\n1. 파일 추가 또는 끌어놓기로 이미지를 넣습니다.\n   폴더 추가는 선택한 폴더 바로 안의 이미지를 불러옵니다.\n2. 색상 수와 저장 위치를 정합니다. 기본 색상 수는 16입니다.\n3. 변환 시작을 누릅니다. 완료 후 원본과 결과를 비교할 수 있습니다.\n\n• PNG / JPG / JPEG를 지원하고 결과는 PNG로 저장합니다.\n• 픽셀 격자를 자동 감지하므로 결과 이미지 크기는 달라질 수 있습니다.\n• 원본과 기존 결과는 덮어쓰지 않습니다. 이름이 겹치면 번호를 붙입니다.\n• 다시 변환하면 현재 목록 전체를 새 설정으로 변환합니다.\n• 이미지 처리는 이 컴퓨터에서 이루어집니다.\n• 실행파일에 변환 엔진과 실행 환경이 포함되어 있습니다.\n\n변환 엔진: SpriteFusion Pixel Snapper 1.0.0\nhttps://github.com/Hugo-Dz/spritefusion-pixel-snapper\n\n" + license;
+        var text = $"픽셀 스냅퍼 {UpdateService.CurrentVersionTag}\n\n시작 시 새 버전을 확인합니다. 업데이트 버튼으로 다운로드·설치할 수 있습니다.\n\n1. 파일 추가 또는 끌어놓기로 이미지를 넣습니다.\n   폴더 추가는 선택한 폴더 바로 안의 이미지를 불러옵니다.\n2. 색상 수, 픽셀 크기와 저장 위치를 정합니다. 기본값은 16색·자동입니다.\n3. 변환 시작을 누릅니다. 완료 후 원본과 결과를 비교할 수 있습니다.\n\n• PNG / JPG / JPEG를 지원하고 결과는 PNG로 저장합니다.\n• 픽셀 크기: 자동으로 감지하거나 직접 지정할 수 있습니다.\n• 직접 지정은 원본에서 한 픽셀 칸의 크기입니다. 예: 8px.\n• 1 이상, 이미지의 짧은 변 길이의 절반 이하로 입력하세요. 소수도 가능합니다.\n• 지정한 크기를 기준으로 경계를 보정하므로 결과 크기는 달라질 수 있습니다.\n• 여러 이미지는 같은 픽셀 크기로 변환합니다. 이미지마다 유효 범위가 다릅니다.\n• 원본과 기존 결과는 덮어쓰지 않습니다. 이름이 겹치면 번호를 붙입니다.\n• 다시 변환하면 현재 목록 전체를 새 설정으로 변환합니다.\n• 이미지 처리는 이 컴퓨터에서 이루어집니다.\n• 실행파일에 변환 엔진과 실행 환경이 포함되어 있습니다.\n\n변환 엔진: SpriteFusion Pixel Snapper 1.0.0\nhttps://github.com/Hugo-Dz/spritefusion-pixel-snapper\n\n" + license;
         var help = new Window { Owner = this, Title = "사용 안내 · 픽셀 스냅퍼", Width = 650, Height = 670, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(26), LineHeight = 23 } } };
         help.ShowDialog();
     }

@@ -17,11 +17,13 @@ public static class EngineService
         SupportedExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
 
     public static async Task<string> ConvertAsync(string inputPath, string? outputDirectory,
-        int sampleValue, CancellationToken token)
+        int sampleValue, CancellationToken token, double? pixelSize = null)
     {
         token.ThrowIfCancellationRequested();
         if (sampleValue is < 1 or > 256)
             throw new ArgumentOutOfRangeException(nameof(sampleValue), "색상 수는 1~256 사이로 입력해 주세요.");
+        if (pixelSize is { } size && (!double.IsFinite(size) || size < 1))
+            throw new ArgumentOutOfRangeException(nameof(pixelSize), "픽셀 크기는 1px 이상의 숫자로 입력해 주세요.");
 
         inputPath = Path.GetFullPath(inputPath);
         if (!File.Exists(inputPath))
@@ -49,6 +51,11 @@ public static class EngineService
             start.ArgumentList.Add(inputPath);
             start.ArgumentList.Add(temporaryOutput);
             start.ArgumentList.Add(sampleValue.ToString(CultureInfo.InvariantCulture));
+            if (pixelSize is { } manualSize)
+            {
+                start.ArgumentList.Add("--pixel-size");
+                start.ArgumentList.Add(manualSize.ToString("R", CultureInfo.InvariantCulture));
+            }
 
             token.ThrowIfCancellationRequested();
             using var process = new Process { StartInfo = start };
@@ -76,6 +83,9 @@ public static class EngineService
             if (process.ExitCode != 0)
             {
                 var detail = string.IsNullOrWhiteSpace(stderr) ? stdout.Trim() : stderr.Trim();
+                if (pixelSize.HasValue && detail.Contains("pixel_size_override", StringComparison.Ordinal)
+                    && detail.Contains("out of valid range", StringComparison.Ordinal))
+                    throw new InvalidOperationException("픽셀 크기는 1px 이상, 원본 이미지의 짧은 변 길이의 절반 이하로 지정해 주세요.");
                 if (detail.Length > 2000) detail = detail[..2000];
                 throw new InvalidOperationException($"이미지 변환에 실패했습니다.\n{detail}");
             }
