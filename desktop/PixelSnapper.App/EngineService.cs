@@ -23,7 +23,7 @@ public static class EngineService
         if (sampleValue is < 1 or > 256)
             throw new ArgumentOutOfRangeException(nameof(sampleValue), "색상 수는 1~256 사이로 입력해 주세요.");
         if (pixelSize is { } size && (!double.IsFinite(size) || size < 1))
-            throw new ArgumentOutOfRangeException(nameof(pixelSize), "픽셀 크기는 1px 이상의 숫자로 입력해 주세요.");
+            throw new ArgumentOutOfRangeException(nameof(pixelSize), "세밀도는 1px 이상의 숫자로 입력해 주세요.");
         outputSize?.Validate();
 
         inputPath = Path.GetFullPath(inputPath);
@@ -96,7 +96,7 @@ public static class EngineService
                 var detail = string.IsNullOrWhiteSpace(stderr) ? stdout.Trim() : stderr.Trim();
                 if (pixelSize.HasValue && detail.Contains("pixel_size_override", StringComparison.Ordinal)
                     && detail.Contains("out of valid range", StringComparison.Ordinal))
-                    throw new InvalidOperationException("픽셀 크기는 1px 이상, 원본 이미지의 짧은 변 길이의 절반 이하로 지정해 주세요.");
+                    throw new InvalidOperationException("세밀도는 1px 이상, 원본 이미지의 짧은 변 길이의 절반 이하로 지정해 주세요.");
                 if (detail.Length > 2000) detail = detail[..2000];
                 throw new InvalidOperationException($"이미지 변환에 실패했습니다.\n{detail}");
             }

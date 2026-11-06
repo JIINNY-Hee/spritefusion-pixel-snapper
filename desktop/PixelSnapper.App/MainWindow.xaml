@@ -19,13 +19,13 @@
           <DockPanel Margin="0,0,0,14"><TextBlock Text="이미지 목록" FontWeight="SemiBold" FontSize="15"/><TextBlock x:Name="CountLabel" Text="0개" Foreground="{StaticResource Muted}" HorizontalAlignment="Right"/></DockPanel>
           <UniformGrid Grid.Row="1" Columns="2" Margin="0,0,0,12"><Button x:Name="AddButton" Content="＋ 파일 추가" Click="AddFiles_Click" Margin="0,0,7,0" Padding="4,10"/><Button x:Name="FolderButton" Content="폴더 추가" Click="AddFolder_Click" Padding="4,10" ToolTip="선택한 폴더 바로 안의 PNG·JPG 이미지를 추가합니다."/></UniformGrid>
           <Grid Grid.Row="2">
-            <ListBox x:Name="FileList" Background="Transparent" BorderThickness="0" Foreground="#EAF0F8" SelectionChanged="FileList_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListBox x:Name="FileList" Background="Transparent" BorderThickness="0" Foreground="#EAF0F8" SelectionChanged="FileList_SelectionChanged" PreviewKeyDown="FileList_PreviewKeyDown" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
               <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="10"/><Setter Property="Margin" Value="0,0,0,6"/><Setter Property="Background" Value="#202D41"/><Setter Property="Foreground" Value="#EAF0F8"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border x:Name="ItemBorder" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="6" BorderThickness="1" BorderBrush="Transparent"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsSelected" Value="True"><Setter TargetName="ItemBorder" Property="BorderBrush" Value="#5CE1CE"/><Setter TargetName="ItemBorder" Property="Background" Value="#253C4C"/></Trigger><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ItemBorder" Property="Background" Value="#304159"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
               <ListBox.ItemTemplate><DataTemplate><StackPanel ToolTip="{Binding InputPath}"><TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis" FontWeight="SemiBold"/><TextBlock Text="{Binding Status}" Foreground="{StaticResource Muted}" Margin="0,6,0,0" FontSize="12"/><TextBlock Text="{Binding Details}" TextTrimming="CharacterEllipsis" Foreground="#E7B978" FontSize="11" Margin="0,3,0,0" ToolTip="{Binding Details}"/></StackPanel></DataTemplate></ListBox.ItemTemplate>
             </ListBox>
             <StackPanel x:Name="EmptyHint" VerticalAlignment="Center" IsHitTestVisible="False" Margin="10"><TextBlock Text="＋" FontSize="38" Foreground="#5CE1CE" HorizontalAlignment="Center"/><TextBlock Text="이미지를 여기에&#10;끌어놓으세요" TextAlignment="Center" FontSize="16" LineHeight="25" TextWrapping="Wrap" Margin="0,10,0,0"/><TextBlock Text="PNG · JPG · JPEG" TextAlignment="Center" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,12,0,0"/></StackPanel>
           </Grid>
-          <UniformGrid Grid.Row="3" Columns="2" Margin="0,12,0,0"><Button x:Name="RemoveButton" Content="선택 제외" Click="Remove_Click" Padding="5,8" Margin="0,0,7,0" IsEnabled="False"/><Button x:Name="ClearButton" Content="목록 비우기" Click="Clear_Click" Padding="5,8" IsEnabled="False"/></UniformGrid>
+          <UniformGrid Grid.Row="3" Columns="2" Margin="0,12,0,0"><Button x:Name="RemoveButton" Content="선택 제외" Click="Remove_Click" ToolTip="선택한 이미지를 목록에서 제외합니다. 단축키: Delete (원본 파일은 유지됩니다.)" Padding="5,8" Margin="0,0,7,0" IsEnabled="False"/><Button x:Name="ClearButton" Content="목록 비우기" Click="Clear_Click" Padding="5,8" IsEnabled="False"/></UniformGrid>
         </Grid>
       </Border>
       <Grid Grid.Column="2">
@@ -91,13 +91,13 @@
         <StackPanel Margin="0,0,18,0">
           <StackPanel Orientation="Horizontal"><TextBlock Text="색상 수" FontWeight="SemiBold" Width="68"/><TextBox x:Name="ColorsBox" Width="70" Text="16" ToolTip="팔레트에 사용할 최대 색상 수입니다. 1~256 사이의 정수를 입력하세요."/><TextBlock Text="1–256" Foreground="{StaticResource Muted}" FontSize="11" Margin="9,0,0,0"/></StackPanel>
           <StackPanel Orientation="Horizontal" Margin="0,9,0,0">
-            <TextBlock Text="원본 격자" FontWeight="SemiBold" Width="68"/>
+            <TextBlock Text="세밀도" FontWeight="SemiBold" Width="68"/>
             <RadioButton x:Name="AutoPixelSizeRadio" Content="자동" GroupName="PixelSizeMode" IsChecked="True" Checked="PixelSizeMode_Changed" Margin="0,0,12,0"/>
             <RadioButton x:Name="ManualPixelSizeRadio" Content="직접 지정" GroupName="PixelSizeMode" Checked="PixelSizeMode_Changed" Margin="0,0,8,0"/>
-            <TextBox x:Name="PixelSizeBox" Width="64" Text="8" IsEnabled="False" ToolTip="원본 이미지에서 한 픽셀 칸의 크기입니다. 1 이상, 이미지의 짧은 변 길이의 절반 이하로 입력하세요. 소수도 사용할 수 있습니다."/>
+            <TextBox x:Name="PixelSizeBox" Width="64" Text="8" IsEnabled="False" ToolTip="작은 숫자일수록 더 세밀해지고, 큰 숫자일수록 굵고 단순하게 표현됩니다. 1 이상, 이미지의 짧은 변 길이의 절반 이하로 입력하세요. 소수도 사용할 수 있습니다."/>
             <TextBlock Text="px" Foreground="{StaticResource Muted}" FontSize="11" Margin="6,0,0,0"/>
           </StackPanel>
-          <TextBlock Text="원본의 격자 간격입니다. 출력 가로·세로 크기와는 별도 설정입니다." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,9,0,0" TextWrapping="Wrap"/>
+          <TextBlock Text="작은 숫자일수록 더 세밀해집니다. 큰 숫자는 더 굵게 표현됩니다." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,9,0,0" TextWrapping="Wrap"/>
         </StackPanel>
         <Border Grid.Column="1" Background="#2B3A50"/>
         <StackPanel Grid.Column="2" Margin="20,0,0,0"><StackPanel Orientation="Horizontal" Margin="0,0,0,10"><TextBlock Text="저장 위치" FontWeight="SemiBold" Margin="0,0,20,0"/><RadioButton x:Name="AlongsideRadio" Content="원본 이미지 옆" GroupName="Destination" IsChecked="True" Checked="Destination_Changed"/><RadioButton x:Name="CustomRadio" Content="폴더 지정" GroupName="Destination" Checked="Destination_Changed"/></StackPanel>
