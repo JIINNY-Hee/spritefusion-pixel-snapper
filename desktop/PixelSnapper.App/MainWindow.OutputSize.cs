@@ -73,6 +73,7 @@ public partial class MainWindow
         if (!initialized) return;
         if (CustomOutputSizeCheck.IsChecked == true) { SeedOutputSize(); SynchronizeLinkedSize(); }
         UpdateOutputSizeControls();
+        RequestLivePreview();
     }
 
     private void AspectRatio_Changed(object sender, RoutedEventArgs e)
@@ -80,6 +81,7 @@ public partial class MainWindow
         if (!initialized) return;
         SynchronizeLinkedSize();
         UpdateOutputSizeControls();
+        RequestLivePreview();
     }
 
     private void OutputWidth_Changed(object sender, TextChangedEventArgs e) => OutputDimensionChanged(true);
@@ -92,6 +94,7 @@ public partial class MainWindow
         outputSizeInitialized = true;
         SynchronizeLinkedSize();
         UpdateOutputSizeControls();
+        RequestLivePreview();
     }
 
     private void SynchronizeLinkedSize()

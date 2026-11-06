@@ -65,6 +65,7 @@ public partial class MainWindow : Window
     {
         if (busy) return;
         int added = 0, skipped = 0;
+        ImageEntry? firstAdded = null;
         foreach (var path in paths)
         {
             try
@@ -77,13 +78,15 @@ public partial class MainWindow : Window
                     var fullPath = Path.GetFullPath(candidate);
                     if (!File.Exists(fullPath) || !EngineService.IsSupported(fullPath)) { skipped++; continue; }
                     if (entries.Any(item => string.Equals(item.InputPath, fullPath, StringComparison.OrdinalIgnoreCase))) continue;
-                    entries.Add(new ImageEntry { InputPath = fullPath }); added++;
+                    var entry = new ImageEntry { InputPath = fullPath };
+                    entries.Add(entry); firstAdded ??= entry; added++;
                 }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { skipped++; }
         }
         UpdateControls();
-        if (FileList.SelectedItem == null && entries.Count > 0) FileList.SelectedIndex = 0;
+        if (firstAdded != null) FileList.SelectedItem = firstAdded;
+        else if (FileList.SelectedItem == null && entries.Count > 0) FileList.SelectedIndex = 0;
         if (added > 0 || skipped > 0) StatusLabel.Text = $"{added}개 추가됨 · 총 {entries.Count}개" + (skipped > 0 ? $" · 추가할 수 없는 항목 {skipped}개" : "");
     }
 
@@ -125,16 +128,19 @@ public partial class MainWindow : Window
     }
 
     private void FileList_SelectionChanged(object sender, SelectionChangedEventArgs e) { if (initialized) RefreshPreview(); }
-    private void RefreshPreview()
+    private void RefreshPreview(bool useSavedResult = false)
     {
         RefreshOutputSizeSource();
         var entry = FileList.SelectedItem as ImageEntry;
         SetPreview(BeforeImage, BeforeSize, BeforeHint, entry?.InputPath, "이미지를 선택해 주세요");
-        SetPreview(AfterImage, AfterSize, AfterHint, entry?.OutputPath, "변환 후 여기에 표시됩니다");
+        if (busy || (useSavedResult && entry?.OutputPath != null))
+        {
+            SetPreview(AfterImage, AfterSize, AfterHint, entry?.OutputPath, "결과 파일을 저장하고 있습니다…");
+            SetPreviewNote(entry?.OutputPath != null ? "저장 완료 · 옵션을 바꾸면 미리보기만 갱신됩니다." : "변환 시작을 누른 이미지들을 저장하고 있습니다.");
+        }
+        else RequestLivePreview(immediate: true);
         OpenResultButton.IsEnabled = entry?.OutputPath != null && File.Exists(entry.OutputPath);
         RemoveButton.IsEnabled = !busy && entry != null;
-        PreviewNote.Text = string.IsNullOrEmpty(entry?.Details) ? "픽셀을 선명하게 확대해 비교할 수 있습니다." : entry.Details;
-        PreviewNote.ToolTip = PreviewNote.Text;
         ResizePreviews();
     }
     private static void SetPreview(Image image, TextBlock size, TextBlock hint, string? path, string emptyText)
@@ -185,7 +191,7 @@ public partial class MainWindow : Window
     }
 
     private void Destination_Changed(object sender, RoutedEventArgs e) { if (initialized) UpdateDestination(); }
-    private void PixelSizeMode_Changed(object sender, RoutedEventArgs e) { if (initialized) UpdatePixelSize(); }
+    private void PixelSizeMode_Changed(object sender, RoutedEventArgs e) { if (initialized) { UpdatePixelSize(); RequestLivePreview(); } }
     private void UpdatePixelSize()
     {
         AutoPixelSizeRadio.IsEnabled = ManualPixelSizeRadio.IsEnabled = !busy;
@@ -225,13 +231,14 @@ public partial class MainWindow : Window
         string? outputDirectory = CustomRadio.IsChecked == true ? OutputBox.Text : null;
         if (outputDirectory != null && string.IsNullOrWhiteSpace(outputDirectory))
         { MessageBox.Show(this, "찾아보기를 눌러 저장 폴더를 선택해 주세요.", "저장 위치 확인", MessageBoxButton.OK, MessageBoxImage.Information); return; }
-        SaveSettings(); busy = true; cancellation = new CancellationTokenSource(); UpdateControls();
+        SaveSettings(); busy = true; CancelLivePreview(); cancellation = new CancellationTokenSource(); UpdateControls();
         var batch = entries.ToArray(); int done = 0, failed = 0; bool cancelled = false;
         Progress.Maximum = batch.Length; Progress.Value = 0;
         foreach (var entry in batch) { entry.Status = "대기 중"; entry.Details = ""; entry.OutputPath = null; }
         RefreshPreview();
         try
         {
+            await previewWork;
             foreach (var entry in batch)
             {
                 if (cancellation.IsCancellationRequested) { cancelled = true; break; }
@@ -252,7 +259,7 @@ public partial class MainWindow : Window
         {
             busy = false; cancellation.Dispose(); cancellation = null;
             StatusLabel.Text = (cancelled ? "중지됨 · " : "변환 완료 · ") + $"성공 {done}개" + (failed > 0 ? $" · 실패 {failed}개 (목록에서 확인)" : "") + (cancelled ? $" · 남은 항목 {batch.Length - done - failed}개" : "");
-            UpdateControls(); RefreshPreview();
+            UpdateControls(); RefreshPreview(useSavedResult: true);
             if (closeAfterCancel) Close();
         }
     }
@@ -296,10 +303,20 @@ public partial class MainWindow : Window
         SaveOutputSizeSettings();
         settings.UseCustomDirectory = CustomRadio.IsChecked == true; settings.OutputDirectory = OutputBox.Text; settings.Save();
     }
-    private void Window_Closing(object? sender, CancelEventArgs e)
+    private async void Window_Closing(object? sender, CancelEventArgs e)
     {
         updateCancellation?.Cancel();
         if (busy) { e.Cancel = true; closeAfterCancel = true; cancellation?.Cancel(); StatusLabel.Text = "작업을 중지한 뒤 창을 닫습니다…"; return; }
+        previewClosing = true;
+        CancelLivePreview();
+        if (!previewWork.IsCompleted)
+        {
+            e.Cancel = true;
+            await previewWork;
+            SaveSettings();
+            _ = Dispatcher.BeginInvoke(new Action(Close));
+            return;
+        }
         SaveSettings();
     }
     private void Help_Click(object sender, RoutedEventArgs e)
@@ -308,7 +325,7 @@ public partial class MainWindow : Window
         var assembly = Assembly.GetExecutingAssembly();
         var resource = assembly.GetManifestResourceNames().FirstOrDefault(n => n.EndsWith("SpriteFusion-LICENSE.txt", StringComparison.Ordinal));
         if (resource != null) { using var stream = assembly.GetManifestResourceStream(resource)!; using var reader = new StreamReader(stream); license = reader.ReadToEnd(); }
-        var text = $"픽셀 스냅퍼 {UpdateService.CurrentVersionTag}\n\n시작 시 새 버전을 확인합니다. 업데이트 버튼으로 다운로드·설치할 수 있습니다.\n\n1. 파일 추가 또는 끌어놓기로 이미지를 넣습니다.\n   폴더 추가는 선택한 폴더 바로 안의 이미지를 불러옵니다.\n2. 원하는 결과 해상도가 있으면 출력 크기 지정을 켜고 가로·세로를 입력합니다.\n   체인 아이콘이 켜져 있으면 원본 비율에 맞춰 다른 값이 자동으로 바뀝니다.\n3. 색상 수, 세밀도와 저장 위치를 정합니다. 기본값은 16색·자동입니다.\n4. 변환 시작을 누릅니다. 완료 후 원본과 결과를 비교할 수 있습니다.\n\n• PNG / JPG / JPEG를 지원하고 결과는 PNG로 저장합니다.\n• 출력 크기는 저장할 PNG의 가로·세로 픽셀 수입니다.\n• 체인을 끄면 가로·세로를 각각 정확히 지정합니다.\n• 체인을 켜면 마지막으로 입력한 가로 또는 세로를 기준으로 원본 비율을 유지합니다.\n• 여러 이미지는 각각의 원본 비율을 사용하며, 정수 픽셀로 반올림합니다.\n• 각 변 1~8192px, 전체 16,777,216픽셀 이하를 지원합니다.\n• 크기를 바꿀 때 픽셀 경계가 흐려지지 않도록 최근접 방식으로 조절합니다.\n• 세밀도는 자동으로 감지하거나 직접 지정할 수 있습니다.\n• 작은 숫자일수록 더 세밀해지고, 큰 숫자일수록 굵고 단순해집니다.\n• 1 이상, 이미지의 짧은 변 길이의 절반 이하로 입력하세요. 소수도 가능합니다.\n• 선택한 세밀도로 경계를 보정한 뒤, 출력 크기를 지정했다면 그 크기로 저장합니다.\n• 여러 이미지는 같은 세밀도 값을 사용하며 이미지마다 유효 범위가 다릅니다.\n• 원본과 기존 결과는 덮어쓰지 않습니다. 이름이 겹치면 번호를 붙입니다.\n• 이미지를 선택하고 Delete 키를 누르면 목록에서만 제외합니다. 원본 파일은 유지됩니다.\n• 다시 변환하면 현재 목록 전체를 새 설정으로 변환합니다.\n• 이미지 처리는 이 컴퓨터에서 이루어집니다.\n• 실행파일에 변환 엔진과 실행 환경이 포함되어 있습니다.\n\n변환 엔진: SpriteFusion Pixel Snapper 1.0.0\nhttps://github.com/Hugo-Dz/spritefusion-pixel-snapper\n\n" + license;
+        var text = $"픽셀 스냅퍼 {UpdateService.CurrentVersionTag}\n\n시작 시 새 버전을 확인합니다. 업데이트 버튼으로 다운로드·설치할 수 있습니다.\n\n1. 파일 추가 또는 끌어놓기로 이미지를 넣습니다.\n   폴더 추가는 선택한 폴더 바로 안의 이미지를 불러옵니다.\n2. 원하는 결과 해상도가 있으면 출력 크기 지정을 켜고 가로·세로를 입력합니다.\n   체인 아이콘이 켜져 있으면 원본 비율에 맞춰 다른 값이 자동으로 바뀝니다.\n3. 색상 수, 세밀도와 저장 위치를 정합니다. 기본값은 16색·자동입니다.\n4. 이미지를 넣거나 옵션을 바꾸면 변환 미리보기가 자동으로 갱신됩니다.\n5. 결과를 저장하려면 변환 시작을 누릅니다.\n\n• 미리보기는 선택한 이미지에 적용되며 결과 파일을 저장하지 않습니다.\n• 숫자를 연속 입력할 때는 잠시 멈춘 뒤 최신 설정만 미리 봅니다.\n• 저장한 파일 열기는 마지막으로 저장한 결과를 엽니다.\n• PNG / JPG / JPEG를 지원하고 결과는 PNG로 저장합니다.\n• 출력 크기는 저장할 PNG의 가로·세로 픽셀 수입니다.\n• 체인을 끄면 가로·세로를 각각 정확히 지정합니다.\n• 체인을 켜면 마지막으로 입력한 가로 또는 세로를 기준으로 원본 비율을 유지합니다.\n• 여러 이미지는 각각의 원본 비율을 사용하며, 정수 픽셀로 반올림합니다.\n• 각 변 1~8192px, 전체 16,777,216픽셀 이하를 지원합니다.\n• 크기를 바꿀 때 픽셀 경계가 흐려지지 않도록 최근접 방식으로 조절합니다.\n• 세밀도는 자동으로 감지하거나 직접 지정할 수 있습니다.\n• 작은 숫자일수록 더 세밀해지고, 큰 숫자일수록 굵고 단순해집니다.\n• 1 이상, 이미지의 짧은 변 길이의 절반 이하로 입력하세요. 소수도 가능합니다.\n• 선택한 세밀도로 경계를 보정한 뒤, 출력 크기를 지정했다면 그 크기로 저장합니다.\n• 여러 이미지는 같은 세밀도 값을 사용하며 이미지마다 유효 범위가 다릅니다.\n• 원본과 기존 결과는 덮어쓰지 않습니다. 이름이 겹치면 번호를 붙입니다.\n• 이미지를 선택하고 Delete 키를 누르면 목록에서만 제외합니다. 원본 파일은 유지됩니다.\n• 다시 변환하면 현재 목록 전체를 새 설정으로 변환합니다.\n• 이미지 처리는 이 컴퓨터에서 이루어집니다.\n• 실행파일에 변환 엔진과 실행 환경이 포함되어 있습니다.\n\n변환 엔진: SpriteFusion Pixel Snapper 1.0.0\nhttps://github.com/Hugo-Dz/spritefusion-pixel-snapper\n\n" + license;
         var help = new Window { Owner = this, Title = "사용 안내 · 픽셀 스냅퍼", Width = 650, Height = 670, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(26), LineHeight = 23 } } };
         help.ShowDialog();
     }

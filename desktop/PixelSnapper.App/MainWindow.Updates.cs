@@ -33,6 +33,7 @@ public partial class MainWindow
         var dialog = new Window { Owner = this, Title = "업데이트 다운로드", Width = 450, SizeToContent = SizeToContent.Height,
             ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = panel };
         string? staged = null; Exception? failure = null;
+        bool installStarted = false;
         cancel.Click += (_, _) => dialog.Close();
         dialog.Closing += (_, _) => cancellationSource.Cancel();
         Task downloadTask = Task.CompletedTask;
@@ -53,10 +54,23 @@ public partial class MainWindow
             dialog.ShowDialog();
             await downloadTask;
             if (failure != null) MessageBox.Show(this, "업데이트를 설치하지 못했습니다. 기존 버전을 계속 사용할 수 있습니다.\n\n" + failure.Message, "업데이트", MessageBoxButton.OK, MessageBoxImage.Warning);
-            if (staged != null) { SaveSettings(); await Task.Run(() => UpdateService.StartInstall(staged)); Application.Current.Shutdown(); }
+            if (staged != null)
+            {
+                previewClosing = true;
+                CancelLivePreview();
+                await previewWork;
+                SaveSettings();
+                await Task.Run(() => UpdateService.StartInstall(staged));
+                installStarted = true;
+                Application.Current.Shutdown();
+            }
         }
         catch (Exception ex) { MessageBox.Show(this, "업데이트를 시작하지 못했습니다.\n" + ex.Message, "업데이트", MessageBoxButton.OK, MessageBoxImage.Warning); }
-        finally { updateCancellation = null; updating = false; UpdateControls(); }
+        finally
+        {
+            updateCancellation = null; updating = false; UpdateControls();
+            if (!installStarted && previewClosing && IsVisible) { previewClosing = false; RequestLivePreview(); }
+        }
     }
 
     private async Task CheckForUpdatesAsync(bool manual)
