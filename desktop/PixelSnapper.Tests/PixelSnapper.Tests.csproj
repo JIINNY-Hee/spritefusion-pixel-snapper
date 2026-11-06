@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../PixelSnapper.App/EngineService.cs" Link="EngineService.cs" />
+    <EmbeddedResource Include="../PixelSnapper.App/Assets/spritefusion-pixel-snapper.exe" LogicalName="PixelSnapper.Engine.exe" />
+  </ItemGroup>
+</Project>
