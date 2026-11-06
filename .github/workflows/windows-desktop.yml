@@ -1,0 +1,119 @@
+name: Windows desktop
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Optional new stable tag to publish, e.g. v1.1.0. Leave blank to test/build only.'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Select release version
+        id: version
+        shell: pwsh
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          MANUAL_TAG: ${{ inputs.release_tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = ([xml](Get-Content desktop/PixelSnapper.App/PixelSnapper.App.csproj -Raw)).Project.PropertyGroup.Version
+          $tag = if ($env:REF_TYPE -eq 'tag') { $env:REF_NAME } else { $env:MANUAL_TAG }
+          if ($tag) {
+            if ($tag -notmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') { throw 'Stable tags must be vMAJOR.MINOR.PATCH.' }
+            if ($tag.Substring(1) -ne $version) { throw 'Tag version must match the desktop project Version.' }
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "release_tag=$tag" >> $env:GITHUB_OUTPUT
+      - name: Prepare Rust
+        shell: pwsh
+        run: |
+          rustup toolchain install stable --profile minimal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup default stable
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test and publish desktop
+        shell: pwsh
+        run: ./desktop/build.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: PixelSnapper-win-x64
+          path: |
+            desktop/dist/PixelSnapper.exe
+            desktop/dist/SHA256SUMS.txt
+            desktop/dist/SpriteFusion-LICENSE.txt
+            desktop/dist/README.md
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: PixelSnapper-win-x64
+          path: release
+      - name: Publish immutable version assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.build.outputs.release_tag }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+          BUILD_SHA: ${{ github.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:EVENT_NAME -eq 'workflow_dispatch') {
+            $matchingRefs = gh api "repos/$env:GH_REPO/git/matching-refs/tags/$env:RELEASE_TAG"
+            if ($LASTEXITCODE -ne 0) { throw 'Could not inspect existing tags.' }
+            if (($matchingRefs | ConvertFrom-Json) | Where-Object ref -eq "refs/tags/$env:RELEASE_TAG") { throw 'Manual publishing requires an unused tag. Existing tags are never moved.' }
+          }
+          $allReleases = gh release list --limit 100 --json tagName,isDraft,isPrerelease
+          if ($LASTEXITCODE -ne 0) { throw 'Could not inspect existing releases.' }
+          foreach ($release in ($allReleases | ConvertFrom-Json)) {
+            if ($release.tagName -eq $env:RELEASE_TAG) { throw 'This version already has a release. Use a new version; existing assets are never overwritten.' }
+            if (!$release.isDraft -and !$release.isPrerelease -and $release.tagName -match '^v\d+\.\d+\.\d+$') {
+              if ([version]$release.tagName.Substring(1) -ge [version]$env:RELEASE_VERSION) { throw 'Release version must be newer than published stable versions.' }
+            }
+          }
+          $expected = ((Get-Content release/SHA256SUMS.txt -Raw).Trim() -split '\s+')[0]
+          $actual = (Get-FileHash release/PixelSnapper.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw 'Artifact checksum mismatch.' }
+          $tagArguments = if ($env:EVENT_NAME -eq 'workflow_dispatch') { @('--target', $env:BUILD_SHA) } else { @('--verify-tag') }
+          gh release create $env:RELEASE_TAG @tagArguments --draft --title "Pixel Snapper $env:RELEASE_TAG" --generate-notes
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create draft release.' }
+          gh release upload $env:RELEASE_TAG release/PixelSnapper.exe release/SHA256SUMS.txt release/SpriteFusion-LICENSE.txt release/README.md
+          if ($LASTEXITCODE -ne 0) { throw 'Asset upload failed; the release remains a draft.' }
+          gh release edit $env:RELEASE_TAG --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Could not publish release; inspect the draft.' }
