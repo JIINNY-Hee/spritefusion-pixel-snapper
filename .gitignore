@@ -2,3 +2,12 @@
 /samples
 /pkg
 .DS_Store
+
+# Windows desktop generated files and embedded Rust build output
+**/bin/
+**/obj/
+/desktop/.build/
+/desktop/dist/
+/desktop/PixelSnapper.App/Assets/spritefusion-pixel-snapper.exe
+*.user
+*.suo

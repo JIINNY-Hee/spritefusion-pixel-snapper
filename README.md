@@ -1,3 +1,15 @@
+# 픽셀 스냅퍼 · Windows GUI
+
+[**Windows 실행파일 받기**](https://github.com/JIINNY-Hee/spritefusion-pixel-snapper/releases/latest/download/PixelSnapper.exe) · [사용 안내](desktop/README.md) · [빌드·배포 안내](desktop/RELEASING.md)
+
+이 포크에는 한국어 Windows 인터페이스와 GitHub Releases 기반 업데이트 기능이 추가되어 있습니다. 이미지 끌어놓기, 여러 파일 변환, 원본·결과 미리보기, 색상 수와 저장 폴더 선택을 지원합니다. EXE 하나로 실행하며 원본 이미지를 보존합니다.
+
+앱 시작 시 새 정식 버전을 자동으로 확인하고, 사용자가 선택하면 다운로드·검증 후 업데이트합니다. 기존 1.0.0 사용자는 1.1.0 이상을 한 번 직접 받아 교체해 주세요.
+
+아래는 원본 프로젝트 안내입니다.
+
+---
+
 # Sprite Fusion Pixel Snapper
 
 <p align="left">
