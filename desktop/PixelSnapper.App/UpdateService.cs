@@ -290,7 +290,7 @@ public static class UpdateService
         return true;
     }
 
-    private static void RunHelper(string requestPath)
+    internal static void RunHelper(string requestPath)
     {
         var staged = Environment.ProcessPath ?? throw new InvalidOperationException("업데이트 실행파일 경로를 확인할 수 없습니다.");
         var receipt = ValidateStagedPath(staged);
@@ -311,7 +311,7 @@ public static class UpdateService
             var start = new ProcessStartInfo(path) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(path)! };
             using var launched = Process.Start(start) ?? throw new InvalidOperationException("업데이트한 프로그램을 실행하지 못했습니다.");
         });
-        File.Delete(requestPath);
+        TryDeleteFile(requestPath);
     }
 
     private static DownloadReceipt ValidateStagedPath(string stagedPath)
