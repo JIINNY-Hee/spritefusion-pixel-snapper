@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../PixelSnapper.App/EngineService.cs" Link="EngineService.cs" />
+    <Compile Include="../PixelSnapper.App/PreviewImage.cs" Link="PreviewImage.cs" />
     <Compile Include="../PixelSnapper.App/OutputSizeOptions.cs" Link="OutputSizeOptions.cs" />
     <Compile Include="../PixelSnapper.App/OutputImageService.cs" Link="OutputImageService.cs" />
     <EmbeddedResource Include="../PixelSnapper.App/Assets/spritefusion-pixel-snapper.exe" LogicalName="PixelSnapper.Engine.exe" />

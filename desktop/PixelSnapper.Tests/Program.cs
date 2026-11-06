@@ -186,6 +186,73 @@ using (var cancelled = new CancellationTokenSource())
 }
 Assert(!Directory.EnumerateFiles(root, ".pixelsnapper-*", SearchOption.AllDirectories).Any(), "no partial output after success, failure, or cancellation");
 Assert(!Directory.EnumerateFiles(customDirectory, "취소 테스트_snapped*").Any(), "cancelled conversion commits no final result");
+
+// Preview is a rendering-only operation: it must not consume export filenames or leave files behind.
+var previewDirectory = Path.Combine(Path.GetTempPath(), "PixelSnapper", "previews");
+var previewFilesBefore = Directory.Exists(previewDirectory)
+    ? Directory.GetFiles(previewDirectory).OrderBy(path => path).ToArray() : Array.Empty<string>();
+var previewOnlyDirectory = Path.Combine(root, "미리보기 전용 입력 폴더");
+Directory.CreateDirectory(previewOnlyDirectory);
+var previewOnlySource = Path.Combine(previewOnlyDirectory, "저장 전 이미지.png");
+File.Copy(landscapeSource, previewOnlySource);
+var filesBeforePreviews = Directory.GetFiles(root, "*", SearchOption.AllDirectories).OrderBy(path => path).ToArray();
+var automaticPreview = await EngineService.PreviewAsync(source, 16, CancellationToken.None);
+Assert(automaticPreview.Bitmap.IsFrozen, "preview bitmap can safely cross worker and UI threads");
+Assert((automaticPreview.Width, automaticPreview.Height) == OutputImageService.ReadDimensions(output1),
+    "automatic preview uses the same native result dimensions as export");
+Assert(BitmapPixels(automaticPreview.Bitmap).SequenceEqual(PngPixels(output1)),
+    "preview pixels and transparency exactly match regular export");
+var exactPreview = await EngineService.PreviewAsync(previewOnlySource, 16, CancellationToken.None,
+    outputSize: new OutputSizeOptions(80, 32, false));
+Assert((exactPreview.Width, exactPreview.Height) == (80, 32)
+    && BitmapPixels(exactPreview.Bitmap).SequenceEqual(PngPixels(exactOutput)),
+    "preview applies exact output dimensions with the same pixels as export");
+var linkedPreview = await EngineService.PreviewAsync(portraitSource, 16, CancellationToken.None,
+    outputSize: new OutputSizeOptions(96, 1));
+Assert((linkedPreview.Width, linkedPreview.Height) == (96, 192),
+    "preview uses original image ratio for linked output size");
+var preview4 = await EngineService.PreviewAsync(gridSource, 2, CancellationToken.None, 4);
+var preview8 = await EngineService.PreviewAsync(gridSource, 2, CancellationToken.None, 8);
+Assert(preview4.Width > preview8.Width && preview4.Height > preview8.Height,
+    "changing detail options changes preview result");
+var twoColorPreview = await EngineService.PreviewAsync(source, 2, CancellationToken.None);
+Assert(OpaqueColors(twoColorPreview.Bitmap) <= 2 && OpaqueColors(automaticPreview.Bitmap) > 2,
+    "changing color count changes preview palette");
+var largePreview = await EngineService.PreviewAsync(previewOnlySource, 16, CancellationToken.None,
+    outputSize: new OutputSizeOptions(3072, 1024, false));
+Assert((largePreview.Width, largePreview.Height) == (3072, 1024)
+    && Math.Max(largePreview.Bitmap.PixelWidth, largePreview.Bitmap.PixelHeight) == 2048,
+    "large preview reports actual export dimensions while bounding display memory");
+await MustFail<InvalidOperationException>(() => EngineService.PreviewAsync(malformed, 16, CancellationToken.None),
+    "malformed preview reports an error without exporting");
+await MustFail<InvalidOperationException>(() => EngineService.PreviewAsync(source, 16, CancellationToken.None, 33),
+    "out-of-range detail preview reports an error without exporting");
+using (var cancelled = new CancellationTokenSource())
+{
+    cancelled.Cancel();
+    await MustFail<OperationCanceledException>(() => EngineService.PreviewAsync(source, 16, cancelled.Token),
+        "pre-cancelled preview creates no result");
+}
+using (var cancelled = new CancellationTokenSource())
+{
+    cancelled.CancelAfter(200);
+    await MustFail<OperationCanceledException>(() => EngineService.PreviewAsync(large, 256, cancelled.Token,
+        outputSize: new OutputSizeOptions(4096, 4096)), "in-flight preview cancellation terminates rendering");
+}
+Assert(filesBeforePreviews.SequenceEqual(Directory.GetFiles(root, "*", SearchOption.AllDirectories).OrderBy(path => path)),
+    "preview successes, option changes, errors and cancellation create no user-visible output files");
+Assert(previewFilesBefore.SequenceEqual(Directory.GetFiles(previewDirectory).OrderBy(path => path)),
+    "all preview temporary files are removed after success, failure and cancellation");
+Assert(landscapeHash.SequenceEqual(SHA256.HashData(File.ReadAllBytes(previewOnlySource))),
+    "preview leaves original image bytes unchanged");
+var savedAfterPreviews = await EngineService.ConvertAsync(previewOnlySource, null, 16, CancellationToken.None,
+    outputSize: new OutputSizeOptions(80, 32, false));
+Assert(Path.GetFileName(savedAfterPreviews) == "저장 전 이미지_snapped.png"
+    && Directory.GetFiles(previewOnlyDirectory).Length == 2,
+    "explicit export is the first and only saved result after multiple previews");
+Assert(BitmapPixels(exactPreview.Bitmap).SequenceEqual(PngPixels(savedAfterPreviews)),
+    "saving after preview preserves the displayed result");
+
 Console.WriteLine("ALL CHECKS PASSED");
 Console.WriteLine("Artifacts: " + root);
 
@@ -195,7 +262,7 @@ static void Assert(bool condition, string label)
     Console.WriteLine("PASS: " + label);
 }
 
-static async Task MustFail<T>(Func<Task<string>> action, string label) where T : Exception
+static async Task MustFail<T>(Func<Task> action, string label) where T : Exception
 {
     try { await action(); }
     catch (T) { Console.WriteLine("PASS: " + label); return; }
@@ -207,4 +274,33 @@ static void MustThrow<T>(Action action, string label) where T : Exception
     try { action(); }
     catch (T) { Console.WriteLine("PASS: " + label); return; }
     throw new Exception("FAILED: " + label);
+}
+
+static byte[] BitmapPixels(System.Windows.Media.Imaging.BitmapSource bitmap)
+{
+    if (bitmap.Format != System.Windows.Media.PixelFormats.Bgra32)
+        bitmap = new System.Windows.Media.Imaging.FormatConvertedBitmap(bitmap,
+            System.Windows.Media.PixelFormats.Bgra32, null, 0);
+    var stride = bitmap.PixelWidth * 4;
+    var pixels = new byte[stride * bitmap.PixelHeight];
+    bitmap.CopyPixels(pixels, stride, 0);
+    return pixels;
+}
+
+static byte[] PngPixels(string path)
+{
+    using var stream = File.OpenRead(path);
+    var decoder = System.Windows.Media.Imaging.BitmapDecoder.Create(stream,
+        System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat,
+        System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
+    return BitmapPixels(decoder.Frames[0]);
+}
+
+static int OpaqueColors(System.Windows.Media.Imaging.BitmapSource bitmap)
+{
+    var pixels = BitmapPixels(bitmap);
+    var colors = new HashSet<int>();
+    for (var i = 0; i < pixels.Length; i += 4)
+        if (pixels[i + 3] > 0) colors.Add(pixels[i] | (pixels[i + 1] << 8) | (pixels[i + 2] << 16));
+    return colors.Count;
 }
