@@ -7,8 +7,17 @@ namespace PixelSnapper;
 public sealed class ImageEntry : INotifyPropertyChanged
 {
     public required string InputPath { get; init; }
+    public bool IsClipboardImage { get; init; }
     public string FileName => Path.GetFileName(InputPath);
     public string? OutputPath { get; set; }
+    public string? GetOutputDirectory(string? selectedDirectory, string? clipboardDirectory)
+    {
+        if (!string.IsNullOrWhiteSpace(selectedDirectory)) return selectedDirectory;
+        if (!IsClipboardImage) return null;
+        if (string.IsNullOrWhiteSpace(clipboardDirectory))
+            throw new InvalidOperationException("클립보드 이미지의 저장 폴더를 선택해 주세요.");
+        return clipboardDirectory;
+    }
     private string status = "대기 중";
     public string Status { get => status; set { status = value; Changed(); } }
     private string details = "";
@@ -30,6 +39,7 @@ public sealed class Settings
     public bool UseCustomDirectory { get; set; }
     public string OutputDirectory { get; set; } = "";
     public string LastInputDirectory { get; set; } = "";
+    public string ClipboardOutputDirectory { get; set; } = "";
     public static string StoreDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PixelSnapper");
     public static Settings Load()
     {

@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         FileList.ItemsSource = entries;
+        Closed += (_, _) => clipboardImages.Dispose();
         ColorsBox.Text = Math.Clamp(settings.Colors, 1, 256).ToString();
         bool validPixelSize = double.IsFinite(settings.PixelSize) && settings.PixelSize >= 1;
         PixelSizeBox.Text = (validPixelSize ? settings.PixelSize : 8).ToString(CultureInfo.CurrentCulture);
@@ -112,6 +113,7 @@ public partial class MainWindow : Window
     {
         if (busy || FileList.SelectedIndex < 0) return;
         var index = FileList.SelectedIndex;
+        var removed = entries[index];
         entries.RemoveAt(index);
         if (entries.Count > 0)
         {
@@ -120,10 +122,13 @@ public partial class MainWindow : Window
         }
         UpdateControls();
         StatusLabel.Text = $"총 {entries.Count}개 이미지";
+        ReleaseClipboardEntries([removed]);
     }
     private void Clear_Click(object sender, RoutedEventArgs e)
     {
+        var removed = entries.ToArray();
         entries.Clear(); UpdateControls(); Progress.Value = 0;
+        ReleaseClipboardEntries(removed);
         StatusLabel.Text = "이미지를 추가하면 시작할 수 있습니다.";
     }
 
@@ -207,6 +212,9 @@ public partial class MainWindow : Window
     {
         OutputBox.IsEnabled = !busy && CustomRadio.IsChecked == true;
         BrowseOutputButton.IsEnabled = !busy && CustomRadio.IsChecked == true;
+        DestinationNote.Text = AlongsideRadio.IsChecked == true && entries.Any(entry => entry.IsClipboardImage)
+            ? "클립보드 이미지는 변환 시작 시 저장 폴더를 선택합니다. 기존 결과는 보존됩니다."
+            : "원본은 보존하고, 결과는 파일명_snapped.png로 저장합니다. 같은 이름이 있으면 번호를 붙입니다.";
     }
     private void BrowseOutput_Click(object sender, RoutedEventArgs e)
     {
@@ -217,7 +225,7 @@ public partial class MainWindow : Window
 
     private async void Convert_Click(object sender, RoutedEventArgs e)
     {
-        if (busy || updating || entries.Count == 0) return;
+        if (busy || updating || pastingClipboard || entries.Count == 0) return;
         if (!int.TryParse(ColorsBox.Text, out int colors) || colors is < 1 or > 256)
         { MessageBox.Show(this, "색상 수는 1~256 사이의 정수로 입력해 주세요.", "색상 수 확인", MessageBoxButton.OK, MessageBoxImage.Information); ColorsBox.Focus(); ColorsBox.SelectAll(); return; }
         double? pixelSize = null;
@@ -231,6 +239,16 @@ public partial class MainWindow : Window
         string? outputDirectory = CustomRadio.IsChecked == true ? OutputBox.Text : null;
         if (outputDirectory != null && string.IsNullOrWhiteSpace(outputDirectory))
         { MessageBox.Show(this, "찾아보기를 눌러 저장 폴더를 선택해 주세요.", "저장 위치 확인", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+        string? clipboardOutputDirectory = null;
+        if (outputDirectory == null && entries.Any(entry => entry.IsClipboardImage))
+        {
+            var dialog = new OpenFolderDialog { Title = "클립보드 이미지의 변환 결과를 저장할 폴더" };
+            dialog.InitialDirectory = Directory.Exists(settings.ClipboardOutputDirectory)
+                ? settings.ClipboardOutputDirectory : Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+            if (dialog.ShowDialog(this) != true) return;
+            clipboardOutputDirectory = dialog.FolderName;
+            settings.ClipboardOutputDirectory = clipboardOutputDirectory;
+        }
         SaveSettings(); busy = true; CancelLivePreview(); cancellation = new CancellationTokenSource(); UpdateControls();
         var batch = entries.ToArray(); int done = 0, failed = 0; bool cancelled = false;
         Progress.Maximum = batch.Length; Progress.Value = 0;
@@ -246,7 +264,8 @@ public partial class MainWindow : Window
                 FileList.SelectedItem = entry; FileList.ScrollIntoView(entry);
                 try
                 {
-                    entry.OutputPath = await EngineService.ConvertAsync(entry.InputPath, outputDirectory, colors, cancellation.Token, pixelSize, outputSize);
+                    entry.OutputPath = await EngineService.ConvertAsync(entry.InputPath,
+                        entry.GetOutputDirectory(outputDirectory, clipboardOutputDirectory), colors, cancellation.Token, pixelSize, outputSize);
                     entry.Status = "완료"; entry.Details = Path.GetFileName(entry.OutputPath); lastOutput = entry.OutputPath; done++;
                 }
                 catch (OperationCanceledException) { entry.Status = "중지됨"; cancelled = true; break; }
@@ -273,6 +292,7 @@ public partial class MainWindow : Window
         AddButton.IsEnabled = FolderButton.IsEnabled = ColorsBox.IsEnabled = AlongsideRadio.IsEnabled = CustomRadio.IsEnabled = !busy;
         ClearButton.IsEnabled = !busy && entries.Count > 0; RemoveButton.IsEnabled = !busy && FileList.SelectedItem != null;
         ConvertButton.IsEnabled = !busy && entries.Count > 0;
+        PasteButton.IsEnabled = !busy && !pastingClipboard && !previewClosing;
         ConvertButton.Content = busy ? "변환 중…" : "변환 시작";
         CancelButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed; CancelButton.IsEnabled = busy;
         OpenFolderButton.IsEnabled = lastOutput != null && Directory.Exists(Path.GetDirectoryName(lastOutput));
@@ -280,7 +300,7 @@ public partial class MainWindow : Window
         UpdatePixelSize();
         UpdateOutputSizeControls();
         UpdateButton.IsEnabled = !busy && !updating;
-        if (updating) ConvertButton.IsEnabled = false;
+        if (updating || pastingClipboard) ConvertButton.IsEnabled = false;
     }
     private void OpenResult_Click(object sender, RoutedEventArgs e)
     { if (FileList.SelectedItem is ImageEntry { OutputPath: not null } entry) OpenPath(entry.OutputPath); }
@@ -325,7 +345,7 @@ public partial class MainWindow : Window
         var assembly = Assembly.GetExecutingAssembly();
         var resource = assembly.GetManifestResourceNames().FirstOrDefault(n => n.EndsWith("SpriteFusion-LICENSE.txt", StringComparison.Ordinal));
         if (resource != null) { using var stream = assembly.GetManifestResourceStream(resource)!; using var reader = new StreamReader(stream); license = reader.ReadToEnd(); }
-        var text = $"픽셀 스냅퍼 {UpdateService.CurrentVersionTag}\n\n시작 시 새 버전을 확인합니다. 업데이트 버튼으로 다운로드·설치할 수 있습니다.\n\n1. 파일 추가 또는 끌어놓기로 이미지를 넣습니다.\n   폴더 추가는 선택한 폴더 바로 안의 이미지를 불러옵니다.\n2. 원하는 결과 해상도가 있으면 출력 크기 지정을 켜고 가로·세로를 입력합니다.\n   체인 아이콘이 켜져 있으면 원본 비율에 맞춰 다른 값이 자동으로 바뀝니다.\n3. 색상 수, 세밀도와 저장 위치를 정합니다. 기본값은 16색·자동입니다.\n4. 이미지를 넣거나 옵션을 바꾸면 변환 미리보기가 자동으로 갱신됩니다.\n5. 결과를 저장하려면 변환 시작을 누릅니다.\n\n• 미리보기는 선택한 이미지에 적용되며 결과 파일을 저장하지 않습니다.\n• 숫자를 연속 입력할 때는 잠시 멈춘 뒤 최신 설정만 미리 봅니다.\n• 저장한 파일 열기는 마지막으로 저장한 결과를 엽니다.\n• PNG / JPG / JPEG를 지원하고 결과는 PNG로 저장합니다.\n• 출력 크기는 저장할 PNG의 가로·세로 픽셀 수입니다.\n• 체인을 끄면 가로·세로를 각각 정확히 지정합니다.\n• 체인을 켜면 마지막으로 입력한 가로 또는 세로를 기준으로 원본 비율을 유지합니다.\n• 여러 이미지는 각각의 원본 비율을 사용하며, 정수 픽셀로 반올림합니다.\n• 각 변 1~8192px, 전체 16,777,216픽셀 이하를 지원합니다.\n• 크기를 바꿀 때 픽셀 경계가 흐려지지 않도록 최근접 방식으로 조절합니다.\n• 세밀도는 자동으로 감지하거나 직접 지정할 수 있습니다.\n• 작은 숫자일수록 더 세밀해지고, 큰 숫자일수록 굵고 단순해집니다.\n• 1 이상, 이미지의 짧은 변 길이의 절반 이하로 입력하세요. 소수도 가능합니다.\n• 선택한 세밀도로 경계를 보정한 뒤, 출력 크기를 지정했다면 그 크기로 저장합니다.\n• 여러 이미지는 같은 세밀도 값을 사용하며 이미지마다 유효 범위가 다릅니다.\n• 원본과 기존 결과는 덮어쓰지 않습니다. 이름이 겹치면 번호를 붙입니다.\n• 이미지를 선택하고 Delete 키를 누르면 목록에서만 제외합니다. 원본 파일은 유지됩니다.\n• 다시 변환하면 현재 목록 전체를 새 설정으로 변환합니다.\n• 이미지 처리는 이 컴퓨터에서 이루어집니다.\n• 실행파일에 변환 엔진과 실행 환경이 포함되어 있습니다.\n\n변환 엔진: SpriteFusion Pixel Snapper 1.0.0\nhttps://github.com/Hugo-Dz/spritefusion-pixel-snapper\n\n" + license;
+        var text = $"픽셀 스냅퍼 {UpdateService.CurrentVersionTag}\n\n시작 시 새 버전을 확인합니다. 업데이트 버튼으로 다운로드·설치할 수 있습니다.\n\n1. 파일 추가, 끌어놓기 또는 Ctrl+V로 이미지를 넣습니다.\n   이미지 붙여넣기 버튼도 사용할 수 있습니다.\n   폴더 추가는 선택한 폴더 바로 안의 이미지를 불러옵니다.\n2. 원하는 결과 해상도가 있으면 출력 크기 지정을 켜고 가로·세로를 입력합니다.\n   체인 아이콘이 켜져 있으면 원본 비율에 맞춰 다른 값이 자동으로 바뀝니다.\n3. 색상 수, 세밀도와 저장 위치를 정합니다. 기본값은 16색·자동입니다.\n4. 이미지를 넣거나 옵션을 바꾸면 변환 미리보기가 자동으로 갱신됩니다.\n5. 결과를 저장하려면 변환 시작을 누릅니다.\n\n• 클립보드 이미지는 목록에서 제외하거나 앱을 닫으면 임시 원본을 정리합니다.\n• 클립보드 이미지는 변환 시작 시 선택한 폴더에만 결과를 저장합니다.\n• 숫자 입력란에서는 Ctrl+V로 숫자를 붙여넣습니다.\n• 미리보기는 선택한 이미지에 적용되며 결과 파일을 저장하지 않습니다.\n• 숫자를 연속 입력할 때는 잠시 멈춘 뒤 최신 설정만 미리 봅니다.\n• 저장한 파일 열기는 마지막으로 저장한 결과를 엽니다.\n• PNG / JPG / JPEG를 지원하고 결과는 PNG로 저장합니다.\n• 출력 크기는 저장할 PNG의 가로·세로 픽셀 수입니다.\n• 체인을 끄면 가로·세로를 각각 정확히 지정합니다.\n• 체인을 켜면 마지막으로 입력한 가로 또는 세로를 기준으로 원본 비율을 유지합니다.\n• 여러 이미지는 각각의 원본 비율을 사용하며, 정수 픽셀로 반올림합니다.\n• 각 변 1~8192px, 전체 16,777,216픽셀 이하를 지원합니다.\n• 크기를 바꿀 때 픽셀 경계가 흐려지지 않도록 최근접 방식으로 조절합니다.\n• 세밀도는 자동으로 감지하거나 직접 지정할 수 있습니다.\n• 작은 숫자일수록 더 세밀해지고, 큰 숫자일수록 굵고 단순해집니다.\n• 1 이상, 이미지의 짧은 변 길이의 절반 이하로 입력하세요. 소수도 가능합니다.\n• 선택한 세밀도로 경계를 보정한 뒤, 출력 크기를 지정했다면 그 크기로 저장합니다.\n• 여러 이미지는 같은 세밀도 값을 사용하며 이미지마다 유효 범위가 다릅니다.\n• 원본과 기존 결과는 덮어쓰지 않습니다. 이름이 겹치면 번호를 붙입니다.\n• 이미지를 선택하고 Delete 키를 누르면 목록에서만 제외합니다. 원본 파일은 유지됩니다.\n• 다시 변환하면 현재 목록 전체를 새 설정으로 변환합니다.\n• 이미지 처리는 이 컴퓨터에서 이루어집니다.\n• 실행파일에 변환 엔진과 실행 환경이 포함되어 있습니다.\n\n변환 엔진: SpriteFusion Pixel Snapper 1.0.0\nhttps://github.com/Hugo-Dz/spritefusion-pixel-snapper\n\n" + license;
         var help = new Window { Owner = this, Title = "사용 안내 · 픽셀 스냅퍼", Width = 650, Height = 670, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(26), LineHeight = 23 } } };
         help.ShowDialog();
     }
