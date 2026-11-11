@@ -253,6 +253,7 @@ Assert(Path.GetFileName(savedAfterPreviews) == "저장 전 이미지_snapped.png
 Assert(BitmapPixels(exactPreview.Bitmap).SequenceEqual(PngPixels(savedAfterPreviews)),
     "saving after preview preserves the displayed result");
 
+await ClipboardTests.RunAsync(root);
 Console.WriteLine("ALL CHECKS PASSED");
 Console.WriteLine("Artifacts: " + root);
 

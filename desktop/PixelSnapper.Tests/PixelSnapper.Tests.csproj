@@ -8,6 +8,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../PixelSnapper.App/ClipboardImageService.cs" Link="ClipboardImageService.cs" />
+    <Compile Include="../PixelSnapper.App/Models.cs" Link="Models.cs" />
     <Compile Include="../PixelSnapper.App/EngineService.cs" Link="EngineService.cs" />
     <Compile Include="../PixelSnapper.App/PreviewImage.cs" Link="PreviewImage.cs" />
     <Compile Include="../PixelSnapper.App/OutputSizeOptions.cs" Link="OutputSizeOptions.cs" />
